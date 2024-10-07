@@ -4,6 +4,8 @@ import signal
 import time
 import json
 
+# Grafana default user and password: admin;admin. New password for project: hyperledger
+
 # Script for hyperledger besu permissioned test network creation
 
 def setup_data(numNodes=4):
@@ -115,13 +117,13 @@ def kill_process_on_port(port):
     except Exception as e:
         print(f"Error killing process on port {port}: {e}")
 
-def start_node(node_id, first_p2p_port=30303, first_rpc_http_port=8545):   
+def start_node(node_id, first_p2p_port=30303, first_rpc_http_port=8545, first_metrics_port=9545, metrics_host="0.0.0.0"):   
     print(f"\nStarting node {node_id+1}")
     # Kill processes running on the ports we require
     kill_process_on_port(first_p2p_port + node_id)
     kill_process_on_port(first_rpc_http_port + node_id)
      
-    command = "besu --data-path=nodes/" + str(node_id+1) + "/data --genesis-file=genesis.json --permissions-nodes-config-file-enabled --permissions-accounts-config-file-enabled --rpc-http-enabled --rpc-http-api=ADMIN,ETH,NET,PERM,IBFT --host-allowlist=\"*\" --rpc-http-cors-origins=\"*\" --p2p-port=" + str(first_p2p_port + node_id) + " --rpc-http-port=" + str(first_rpc_http_port + node_id)
+    command = "besu --data-path=nodes/" + str(node_id+1) + "/data --genesis-file=genesis.json --permissions-nodes-config-file-enabled --permissions-accounts-config-file-enabled --rpc-http-enabled --rpc-http-api=ADMIN,ETH,NET,PERM,IBFT --host-allowlist=\"*\" --rpc-http-cors-origins=\"*\" --p2p-port=" + str(first_p2p_port + node_id) + " --rpc-http-port=" + str(first_rpc_http_port + node_id) + " --metrics-enabled=true --metrics-port=" + str(first_metrics_port + node_id) + f" --metrics-host={metrics_host}"
     
     # Open a new terminal window and run the command
     terminal_command = f"gnome-terminal --title='Node {node_id+1}' -- bash -c '{command}; exec bash'"
@@ -165,20 +167,44 @@ def check_peer_nodes(numNodes, first_rpc_port=8545):
         print(f"\nResult:")
         os.system(command)
     
+def start_metrics(prometheus_configfile):
+    # prometheus_status_command = "sudo systemctl status prometheus"
+    # Command to finish grafana process = "sudo systemctl stop grafana server"
+    start_metrics_command = f"cd prometheus && prometheus --config.file={prometheus_configfile}"
+    start_grafana_command = "sudo systemctl start grafana-server"
+    prometheus_metrics_http_service = "http://localhost:9090"
+    
+    # 0. End processes running on prometheus port 9090
+    kill_process_on_port(9090)
+    
+    # 1. Start metrics in a console
+    print("\n\nStarting metrics:")
+    terminal_command = f"gnome-terminal --title='Metrics - Prometheus' -- bash -c '{start_metrics_command}; exec bash'"
+    process = subprocess.Popen(terminal_command, shell=True)
+    
+    # 2. Open prometheus http service on default browser
+    print(f"\n\nOpening Prometheus metrics service on default browser: {prometheus_metrics_http_service}")
+    os.system(f"xdg-open {prometheus_metrics_http_service}")
+    
+    # 3. Start grafana
+    print("\n\nStarting Grafana:")
+    os.system(start_grafana_command)
 
 def main():
     numNodes = 4
     first_rpc_port = 8545
-    first_p2p_port=30303
+    first_p2p_port = 30303
+    first_metrics_port = 9545
     terminate_after = False
+    prometheus_config = "prometheus.yml"
     
     setup_data(numNodes)
 
     # Start all nodes
-    node_processes = []
+    processes = []
     for i in range(numNodes):
-        process = start_node(i, first_p2p_port, first_rpc_port)
-        node_processes.append(process)
+        process = start_node(i, first_p2p_port, first_rpc_port, first_metrics_port)
+        processes.append(process)
 
     # Ask input of enode url for each node
     enode_urls = []
@@ -205,15 +231,22 @@ def main():
         
     check_peer_nodes(numNodes, first_rpc_port)
     
+    # Start metrics
+    start_metrics(prometheus_config)
+    
     # Finish processes
     if terminate_after:
-        for process in node_processes:
+        # Stop nodes
+        for process in processes:
             process.terminate()
+            
+    # Continuation for extra things
+    # option = input("Enter an opcion ('exit' to finish Grafana): ")
     
 if __name__ == "__main__":
     main()
     print("\n")
     
 """
-Ports used: 8545, 8546, 8547, 8548, 30303, 30304, 30305, 30306
+Ports used: 8545, 8546, 8547, 8548, 30303, 30304, 30305, 30306, 9545, 9546, 9547, 9548, 9090
 """

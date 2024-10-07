@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 3s
+
+scrape_configs:
+  - job_name: 'blockchain-node-metrics'
+    static_configs:
+      - targets: ['localhost:9545', 'localhost:9546', 'localhost:9547', 'localhost:9548']
